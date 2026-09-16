@@ -1,0 +1,4 @@
+# Local preview and deployment secrets never belong in the public Pages repository.
+server.js
+.env
+.env.*
