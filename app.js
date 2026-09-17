@@ -21,7 +21,11 @@
   const formMessage = document.querySelector('#form-message');
   const forms = [...document.querySelectorAll('.auth-form')];
   const toast = document.querySelector('#toast');
+  const requestDialog = document.querySelector('#request-dialog');
+  const requestSummary = document.querySelector('#request-summary');
+  const requestDetail = document.querySelector('#request-detail');
   let toastTimer;
+  let resolvePendingRequest = null;
 
   function apiUrl() {
     const configured = String(window.SMR_API_BASE_URL || '').replace(/\/+$/, '');
@@ -58,6 +62,22 @@
     toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toast.hidden = true; }, 5000);
+  }
+  function closeRequestDialog(confirmed) {
+    if (!resolvePendingRequest) return;
+    const resolve = resolvePendingRequest;
+    resolvePendingRequest = null;
+    requestDialog.close();
+    resolve(confirmed);
+  }
+  function confirmRequest(quote) {
+    const files = quote.unowned_item_count + ' unowned file' + (quote.unowned_item_count === 1 ? '' : 's');
+    requestSummary.textContent = quote.label + ' — ' + coins(quote.total_price_coins) + ' 🪙';
+    requestDetail.textContent = quote.item_kind === 'folder'
+      ? 'This covers ' + files + '. You will receive access in Drive immediately.'
+      : 'You will receive access to this file in Drive immediately.';
+    requestDialog.showModal();
+    return new Promise(resolve => { resolvePendingRequest = resolve; });
   }
   function setMessage(message) { formMessage.textContent = message || ''; }
   function showForm(id) {
@@ -121,10 +141,7 @@
     try {
       const quote = await callServer('quoteCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
       if (quote.already_owned) return showToast('You already own every currently priced item here.');
-      const itemWord = quote.item_kind === 'folder'
-        ? quote.unowned_item_count + ' unowned file' + (quote.unowned_item_count === 1 ? '' : 's')
-        : 'this file';
-      if (!window.confirm('Request ' + quote.label + ' for ' + coins(quote.total_price_coins) + ' 🪙? This covers ' + itemWord + '.')) return;
+      if (!(await confirmRequest(quote))) return;
       const result = await callServer('requestCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
       else showToast(result.error || 'The request could not be completed; your held coins were released.');
@@ -267,6 +284,10 @@
 
   accountButton.addEventListener('click', openAccount);
   document.querySelector('#close-dialog').addEventListener('click', () => dialog.close());
+  document.querySelector('#close-request-dialog').addEventListener('click', () => closeRequestDialog(false));
+  document.querySelector('#cancel-request').addEventListener('click', () => closeRequestDialog(false));
+  document.querySelector('#confirm-request').addEventListener('click', () => closeRequestDialog(true));
+  requestDialog.addEventListener('cancel', event => { event.preventDefault(); closeRequestDialog(false); });
   document.querySelectorAll('.back-button').forEach(button => button.addEventListener('click', () => showForm('')));
   document.querySelector('#show-login').addEventListener('click', () => showForm('login-form'));
   document.querySelector('#show-signup').addEventListener('click', () => showForm('school-form'));
