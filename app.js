@@ -48,6 +48,7 @@
   async function callServer(name, ...args) {
     const requests = {
       getCatalogueSnapshot: ['catalogue_snapshot', { session_token: args[0] || '' }],
+      getMemberCatalogueState: ['member_catalogue_state', { session_token: args[0] }],
       requestSchoolSignupCode: ['request_school_signup_code', { school_email: args[0] }],
       verifySchoolSignupCode: ['verify_school_signup_code', { challenge_id: args[0], code: args[1] }],
       requestLoginCode: ['request_login_code', { email: args[0] }],
@@ -83,12 +84,9 @@
     requestDialog.close();
     resolve(confirmed);
   }
-  function confirmRequest(quote) {
-    const files = quote.unowned_item_count + ' unowned file' + (quote.unowned_item_count === 1 ? '' : 's');
-    requestSummary.textContent = quote.label + ' — ' + coins(quote.total_price_coins) + ' 🪙';
-    requestDetail.textContent = quote.item_kind === 'folder'
-      ? 'This covers ' + files + '. You will receive access in Drive immediately.'
-      : 'You will receive access to this file in Drive immediately.';
+  function confirmRequest(node) {
+    requestSummary.textContent = node.name + ' — ' + coins(Number(node.access.price_millis || 0) / 1000) + ' 🪙';
+    requestDetail.textContent = 'You will receive access to this file in Drive immediately.';
     requestDialog.showModal();
     return new Promise(resolve => { resolvePendingRequest = resolve; });
   }
@@ -236,9 +234,7 @@
       return;
     }
     try {
-      const quote = await callServer('quoteCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
-      if (quote.already_owned) return showToast('You already own every currently priced item here.');
-      if (!(await confirmRequest(quote))) return;
+      if (!(await confirmRequest(node))) return;
       const result = await callServer('requestCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
       else showToast(result.error || 'The request could not be completed; your held coins were released.');
@@ -246,6 +242,22 @@
     } catch (error) {
       showToast(error.message);
     }
+  }
+  function ownedFileUrl(node) {
+    const driveId = String(node.target_drive_item_id || node.id || '');
+    return driveId ? 'https://drive.google.com/open?id=' + encodeURIComponent(driveId) : '';
+  }
+  async function refreshMemberCatalogueState() {
+    if (!state.token || !state.snapshot) return;
+    const result = await callServer('getMemberCatalogueState', state.token);
+    rememberMember(result.member || null);
+    const owned = new Set((result.owned_item_ids || []).map(String));
+    state.snapshot.nodes = (state.snapshot.nodes || []).map(node => {
+      if (!owned.has(String(node.id))) return node;
+      return { ...node, access: { ...node.access, mode: 'open', is_owned: true }, web_url: ownedFileUrl(node) };
+    });
+    updateAccount();
+    renderCatalogue();
   }
   function createNode(node, depth) {
     if (!matches(node)) return null;
@@ -350,24 +362,24 @@
     }
   }
   function savePublicCatalogue(snapshot) {
-    const publicNodes = (snapshot.nodes || []).map(node => ({
-      ...node,
-      web_url: '',
-      access: { ...node.access, mode: node.access.is_owned ? 'requestable' : node.access.mode }
-    }));
-    localStorage.setItem('smr_public_catalogue_v1', JSON.stringify({ saved_at: Date.now(), snapshot: { nodes: publicNodes } }));
+    localStorage.setItem('smr_public_catalogue_v1', JSON.stringify({ saved_at: Date.now(), snapshot: { nodes: snapshot.nodes || [] } }));
   }
   async function loadCatalogue() {
     syncStatus.innerHTML = '<span class="status-dot"></span>Syncing';
     try {
-      state.snapshot = await callServer('getCatalogueSnapshot', state.token);
-      rememberMember(state.snapshot.member || null);
-      if (!state.member) {
-        state.token = '';
-        localStorage.removeItem('smr_session_token_v1');
-      }
+      state.snapshot = await callServer('getCatalogueSnapshot', '');
       loadExpansionState();
       savePublicCatalogue(state.snapshot);
+      if (state.token) {
+        try {
+          await refreshMemberCatalogueState();
+        } catch (error) {
+          state.token = '';
+          localStorage.removeItem('smr_session_token_v1');
+          rememberMember(null);
+          showToast('Your sign-in expired. Please sign in again.');
+        }
+      }
       updateAccount();
       renderCatalogue();
       syncStatus.innerHTML = '<span class="status-dot"></span>Synced';
@@ -478,7 +490,7 @@
       updateAccount();
       dialog.close();
       showToast('Signed in.');
-      loadCatalogue();
+      refreshMemberCatalogueState().catch(error => showToast(error.message));
     } catch (error) { setMessage(error.message); }
   });
   document.querySelector('#school-form').addEventListener('submit', async event => {
@@ -502,7 +514,7 @@
       updateAccount();
       dialog.close();
       showToast('Your SMR account is ready.');
-      loadCatalogue();
+      refreshMemberCatalogueState().catch(error => showToast(error.message));
     } catch (error) { setMessage(error.message); }
   });
 
