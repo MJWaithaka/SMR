@@ -30,11 +30,12 @@
   const requestDetail = document.querySelector('#request-detail');
   const contributionDialog = document.querySelector('#contribution-dialog');
   const contributionForm = document.querySelector('#contribution-form');
-  const contributionTarget = document.querySelector('#contribution-target');
+  const contributionTargetPath = document.querySelector('#contribution-target-path');
   const contributionMessage = document.querySelector('#contribution-message');
   const treeMenu = document.querySelector('#tree-menu');
   const treeMenuToggle = document.querySelector('#tree-menu-toggle');
   const treeMenuRequest = document.querySelector('#tree-menu-request');
+  const treeMenuOpen = document.querySelector('#tree-menu-open');
   let toastTimer;
   let resolvePendingRequest = null;
 
@@ -160,9 +161,12 @@
     state.contextDepth = Number(nodeElement.dataset.depth);
     const isFolder = nodeElement.classList.contains('tree-node-folder');
     const node = snapshotNodeById(state.contextNodeId);
+    treeMenuOpen.hidden = !node || isFolder || !node.web_url;
     treeMenuRequest.hidden = !node || isFolder || node.access.mode !== 'requestable';
     document.querySelector('#tree-menu-contribute').hidden = !isFolder;
     treeMenuToggle.hidden = !isFolder;
+    document.querySelector('#tree-menu-collapse-level').hidden = !isFolder;
+    document.querySelector('#tree-menu-expand-level').hidden = !isFolder;
     if (isFolder) {
       const isOpen = nodeElement.dataset.open === 'true';
       treeMenuToggle.querySelector('span:last-child').textContent = isOpen ? 'Collapse this folder' : 'Expand this folder';
@@ -172,14 +176,14 @@
     const menuRect = treeMenu.getBoundingClientRect();
     treeMenu.style.left = Math.max(12, Math.min(event.clientX, window.innerWidth - menuRect.width - 12)) + 'px';
     treeMenu.style.top = Math.max(12, Math.min(event.clientY, window.innerHeight - menuRect.height - 12)) + 'px';
-    treeMenuToggle.focus();
+    (isFolder ? treeMenuToggle : (treeMenuRequest.hidden ? treeMenuOpen : treeMenuRequest)).focus();
   }
   function openAccount() {
     if (state.member) document.querySelector('#signed-in-email').textContent = state.member.delivery_email;
     showForm('');
     dialog.showModal();
   }
-  function catalogueFolderOptions() {
+  function cataloguePathFor(node) {
     const nodes = (state.snapshot && state.snapshot.nodes) || [];
     const byId = new Map(nodes.map(node => [String(node.id), node]));
     const pathCache = new Map();
@@ -190,7 +194,7 @@
       pathCache.set(String(node.id), path);
       return path;
     }
-    return nodes.filter(node => node.kind === 'folder').map(node => ({ id: String(node.id), path: pathFor(node) })).sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+    return pathFor(node);
   }
   function openContribution(targetId) {
     if (!state.member) {
@@ -198,17 +202,13 @@
       setMessage('Sign in first, then contribute material.');
       return;
     }
-    const folders = catalogueFolderOptions();
-    if (!folders.length) return showToast('The catalogue is still loading. Try again in a moment.');
-    contributionTarget.replaceChildren();
-    folders.forEach(folder => {
-      const option = document.createElement('option');
-      option.value = folder.id;
-      option.textContent = folder.path;
-      contributionTarget.append(option);
-    });
-    contributionTarget.value = folders.some(folder => folder.id === String(targetId || '')) ? String(targetId) : folders[0].id;
-    state.contributionTargetId = contributionTarget.value;
+    const target = snapshotNodeById(targetId);
+    if (!target || target.kind !== 'folder') {
+      showToast('Right-click the destination folder and choose “Contribute here”.');
+      return;
+    }
+    state.contributionTargetId = String(target.id);
+    contributionTargetPath.textContent = cataloguePathFor(target);
     contributionMessage.textContent = '';
     contributionDialog.showModal();
   }
@@ -285,9 +285,10 @@
     row.append(icon);
     const requiresAccess = node.access.mode === 'requestable' && !isFolder;
     const needsConfiguration = node.access.mode === 'unconfigured';
+    const isLockedFolder = node.access.mode === 'locked_folder';
     const isAction = !isFolder || requiresAccess || needsConfiguration;
     const label = document.createElement(isAction ? 'button' : 'span');
-    label.className = 'tree-label' + (isAction ? ' tree-link' : '') + ((requiresAccess || needsConfiguration) ? ' tree-link-restricted' : '');
+    label.className = 'tree-label' + (isAction ? ' tree-link' : '') + ((requiresAccess || needsConfiguration || isLockedFolder) ? ' tree-link-restricted' : '');
     label.textContent = String(node.name).replace(' 🪙', '');
     if (isAction) {
       label.type = 'button';
@@ -415,6 +416,11 @@
     hideTreeMenu();
     if (node) requestAccess(node);
   });
+  treeMenuOpen.addEventListener('click', () => {
+    const node = snapshotNodeById(state.contextNodeId);
+    hideTreeMenu();
+    if (node && node.web_url) window.open(node.web_url, '_blank', 'noopener');
+  });
   treeMenuToggle.addEventListener('click', () => {
     const folder = folderById(state.contextNodeId);
     if (folder) setFolderOpen(folder, folder.dataset.open !== 'true');
@@ -442,7 +448,7 @@
     event.preventDefault();
     contributionMessage.textContent = 'Submitting for review…';
     try {
-      const result = await callServer('submitCatalogueContribution', state.token, contributionTarget.value, document.querySelector('#contribution-title-input').value, document.querySelector('#contribution-url').value, document.querySelector('#contribution-note').value);
+      const result = await callServer('submitCatalogueContribution', state.token, state.contributionTargetId, document.querySelector('#contribution-title-input').value, document.querySelector('#contribution-url').value, document.querySelector('#contribution-note').value);
       contributionDialog.close();
       contributionForm.reset();
       showToast(result.duplicate ? 'That contribution is already waiting for review.' : 'Submitted for community review.');

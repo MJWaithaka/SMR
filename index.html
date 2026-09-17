@@ -46,7 +46,7 @@
     <dialog id="contribution-dialog" class="account-dialog contribution-dialog" aria-labelledby="contribution-title">
       <div class="dialog-header"><h2 id="contribution-title">Contribute material</h2><button class="icon-button" id="close-contribution-dialog" type="button" aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
       <form id="contribution-form" class="auth-form contribution-form">
-        <label>Course folder<select id="contribution-target" required></select></label>
+        <p class="contribution-destination"><span class="material-symbols-outlined" aria-hidden="true">folder</span><span id="contribution-target-path"></span></p>
         <label>Material title<input id="contribution-title-input" maxlength="180" autocomplete="off" required /></label>
         <label>Material link<input id="contribution-url" type="url" inputmode="url" placeholder="https://…" autocomplete="url" required /></label>
         <label>Note for reviewers <span class="optional-label">optional</span><textarea id="contribution-note" maxlength="1000" rows="3"></textarea></label>
@@ -56,6 +56,7 @@
       <p class="form-message" id="contribution-message" aria-live="polite"></p>
     </dialog>
     <div id="tree-menu" class="tree-menu" role="menu" aria-label="Catalogue actions" hidden>
+      <button id="tree-menu-open" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">open_in_new</span><span>Open file</span></button>
       <button id="tree-menu-request" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">add_shopping_cart</span><span>Request this file</span></button>
       <button id="tree-menu-contribute" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">add_circle</span><span>Contribute here</span></button>
       <button id="tree-menu-toggle" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">expand_less</span><span>Collapse this folder</span></button>
