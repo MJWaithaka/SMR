@@ -3,6 +3,7 @@
 
   const state = {
     token: localStorage.getItem('smr_session_token_v1') || '',
+    memberId: localStorage.getItem('smr_member_id_v1') || '',
     member: null,
     snapshot: null,
     query: '',
@@ -93,7 +94,13 @@
     if (signedIn) accountBalance.textContent = coins(state.member.balance_coins) + ' 🪙';
   }
   function getExpansionStateKey() {
-    return 'smr_catalogue_expansion_v1:' + (state.member && state.member.member_id ? state.member.member_id : 'guest');
+    return 'smr_catalogue_expansion_v1:' + (state.member && state.member.member_id ? state.member.member_id : state.memberId || 'guest');
+  }
+  function rememberMember(member) {
+    state.member = member || null;
+    state.memberId = state.member && state.member.member_id ? String(state.member.member_id) : '';
+    if (state.memberId) localStorage.setItem('smr_member_id_v1', state.memberId);
+    else localStorage.removeItem('smr_member_id_v1');
   }
   function loadExpansionState() {
     const key = getExpansionStateKey();
@@ -191,15 +198,17 @@
     icon.setAttribute('aria-hidden', 'true');
     row.append(icon);
     const requiresAccess = node.access.mode === 'requestable';
-    const isAction = !isFolder || requiresAccess;
+    const needsConfiguration = node.access.mode === 'unconfigured';
+    const isAction = !isFolder || requiresAccess || needsConfiguration;
     const label = document.createElement(isAction ? 'button' : 'span');
-    label.className = 'tree-label' + (isAction ? ' tree-link' : '') + (requiresAccess ? ' tree-link-restricted' : '');
+    label.className = 'tree-label' + (isAction ? ' tree-link' : '') + ((requiresAccess || needsConfiguration) ? ' tree-link-restricted' : '');
     label.textContent = String(node.name).replace(' 🪙', '');
     if (isAction) {
       label.type = 'button';
-      label.title = requiresAccess ? 'Request access with coins' : 'Open ' + node.name;
+      label.title = requiresAccess ? 'Request access with coins' : needsConfiguration ? 'This coin-marked material is not configured for website requests yet' : 'Open ' + node.name;
       label.addEventListener('click', () => {
         if (requiresAccess) return requestAccess(node);
+        if (needsConfiguration) return showToast('This coin-marked material is not priced for website requests yet.');
         if (!node.web_url) return showToast('Refreshing the latest catalogue…');
         window.open(node.web_url, '_blank', 'noopener');
       });
@@ -265,7 +274,7 @@
     syncStatus.innerHTML = '<span class="status-dot"></span>Syncing';
     try {
       state.snapshot = await callServer('getCatalogueSnapshot', state.token);
-      state.member = state.snapshot.member || null;
+      rememberMember(state.snapshot.member || null);
       if (!state.member) {
         state.token = '';
         localStorage.removeItem('smr_session_token_v1');
@@ -295,7 +304,7 @@
   document.querySelector('#sign-out').addEventListener('click', async () => {
     try { await callServer('signOut', state.token); } catch { /* Local sign-out still succeeds. */ }
     state.token = '';
-    state.member = null;
+    rememberMember(null);
     localStorage.removeItem('smr_session_token_v1');
     updateAccount();
     dialog.close();
@@ -334,7 +343,7 @@
     try {
       const result = await callServer('completeLogin', state.loginChallengeId, document.querySelector('#login-code').value);
       state.token = result.session_token;
-      state.member = result.member;
+      rememberMember(result.member);
       localStorage.setItem('smr_session_token_v1', state.token);
       updateAccount();
       dialog.close();
@@ -358,7 +367,7 @@
     try {
       const result = await callServer('verifySchoolSignupCode', state.schoolChallengeId, document.querySelector('#school-code').value);
       state.token = result.session_token;
-      state.member = result.member;
+      rememberMember(result.member);
       localStorage.setItem('smr_session_token_v1', state.token);
       updateAccount();
       dialog.close();
