@@ -146,14 +146,16 @@
     icon.textContent = isFolder ? 'folder' : 'description';
     icon.setAttribute('aria-hidden', 'true');
     row.append(icon);
-    const label = document.createElement(isFolder ? 'span' : 'button');
-    label.className = isFolder ? 'tree-label' : 'tree-label tree-link ' + (node.access.mode === 'requestable' ? 'tree-link-restricted' : '');
+    const requiresAccess = node.access.mode === 'requestable';
+    const isAction = !isFolder || requiresAccess;
+    const label = document.createElement(isAction ? 'button' : 'span');
+    label.className = 'tree-label' + (isAction ? ' tree-link' : '') + (requiresAccess ? ' tree-link-restricted' : '');
     label.textContent = String(node.name).replace(' 🪙', '');
-    if (!isFolder) {
+    if (isAction) {
       label.type = 'button';
-      label.title = node.access.mode === 'requestable' ? 'Request access with coins' : 'Open ' + node.name;
+      label.title = requiresAccess ? 'Request access with coins' : 'Open ' + node.name;
       label.addEventListener('click', () => {
-        if (node.access.mode === 'requestable') return requestAccess(node);
+        if (requiresAccess) return requestAccess(node);
         if (!node.web_url) return showToast('Refreshing the latest catalogue…');
         window.open(node.web_url, '_blank', 'noopener');
       });
