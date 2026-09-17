@@ -43,6 +43,11 @@
       <p class="dialog-copy" id="request-detail"></p>
       <div class="request-actions"><button class="text-button" id="cancel-request" type="button">Cancel</button><button class="tonal-button" id="confirm-request" type="button">Request access</button></div>
     </dialog>
+    <div id="tree-menu" class="tree-menu" role="menu" aria-label="Catalogue actions" hidden>
+      <button id="tree-menu-toggle" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">expand_less</span><span>Collapse this folder</span></button>
+      <button id="tree-menu-collapse-level" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">unfold_less</span><span>Collapse folders at this level</span></button>
+      <button id="tree-menu-expand-level" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">unfold_more</span><span>Expand folders at this level</span></button>
+    </div>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <script src="./config.js"></script>
     <script src="./app.js"></script>

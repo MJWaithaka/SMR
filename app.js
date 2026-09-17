@@ -10,7 +10,9 @@
     schoolChallengeId: '',
     loginChallengeId: '',
     expandedNodeIds: new Set(),
-    expansionStateKey: ''
+    expansionStateKey: '',
+    contextNodeId: '',
+    contextDepth: 0
   };
   const tree = document.querySelector('#catalogue-tree');
   const search = document.querySelector('#catalogue-search');
@@ -25,6 +27,8 @@
   const requestDialog = document.querySelector('#request-dialog');
   const requestSummary = document.querySelector('#request-summary');
   const requestDetail = document.querySelector('#request-detail');
+  const treeMenu = document.querySelector('#tree-menu');
+  const treeMenuToggle = document.querySelector('#tree-menu-toggle');
   let toastTimer;
   let resolvePendingRequest = null;
 
@@ -117,6 +121,46 @@
   function saveExpansionState() {
     localStorage.setItem(state.expansionStateKey || getExpansionStateKey(), JSON.stringify([...state.expandedNodeIds]));
   }
+  function folderById(id) {
+    return [...tree.querySelectorAll('.tree-node-folder')].find(element => element.dataset.nodeId === String(id));
+  }
+  function setFolderOpen(folder, open, save) {
+    if (!folder) return;
+    folder.dataset.open = String(open);
+    folder.setAttribute('aria-expanded', String(open));
+    const toggle = folder.querySelector(':scope > .tree-row .tree-toggle');
+    if (toggle) toggle.setAttribute('aria-label', (open ? 'Collapse ' : 'Expand ') + (folder.querySelector('.tree-label') || {}).textContent);
+    if (open) state.expandedNodeIds.add(folder.dataset.nodeId);
+    else state.expandedNodeIds.delete(folder.dataset.nodeId);
+    if (save !== false) saveExpansionState();
+  }
+  function setFoldersAtDepth(depth, open) {
+    tree.querySelectorAll('.tree-node-folder').forEach(folder => {
+      if (Number(folder.dataset.depth) === depth) setFolderOpen(folder, open, false);
+    });
+    saveExpansionState();
+  }
+  function hideTreeMenu() {
+    treeMenu.hidden = true;
+    state.contextNodeId = '';
+  }
+  function showTreeMenu(event, nodeElement) {
+    event.preventDefault();
+    state.contextNodeId = nodeElement.dataset.nodeId;
+    state.contextDepth = Number(nodeElement.dataset.depth);
+    const isFolder = nodeElement.classList.contains('tree-node-folder');
+    treeMenuToggle.hidden = !isFolder;
+    if (isFolder) {
+      const isOpen = nodeElement.dataset.open === 'true';
+      treeMenuToggle.querySelector('span:last-child').textContent = isOpen ? 'Collapse this folder' : 'Expand this folder';
+      treeMenuToggle.querySelector('.material-symbols-outlined').textContent = isOpen ? 'expand_less' : 'expand_more';
+    }
+    treeMenu.hidden = false;
+    const menuRect = treeMenu.getBoundingClientRect();
+    treeMenu.style.left = Math.max(12, Math.min(event.clientX, window.innerWidth - menuRect.width - 12)) + 'px';
+    treeMenu.style.top = Math.max(12, Math.min(event.clientY, window.innerHeight - menuRect.height - 12)) + 'px';
+    treeMenuToggle.focus();
+  }
   function openAccount() {
     if (state.member) document.querySelector('#signed-in-email').textContent = state.member.delivery_email;
     showForm('');
@@ -163,6 +207,7 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'tree-node tree-node-' + (isFolder ? 'folder' : 'file');
     wrapper.dataset.nodeId = String(node.id);
+    wrapper.dataset.depth = String(depth);
     wrapper.style.setProperty('--depth', depth);
     const shouldOpen = Boolean(state.query) || depth === 0 || state.expandedNodeIds.has(String(node.id));
     wrapper.dataset.open = String(shouldOpen);
@@ -178,12 +223,7 @@
       toggle.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">expand_more</span>';
       toggle.addEventListener('click', () => {
         const open = wrapper.dataset.open === 'true';
-        wrapper.dataset.open = String(!open);
-        wrapper.setAttribute('aria-expanded', String(!open));
-        toggle.setAttribute('aria-label', (open ? 'Expand ' : 'Collapse ') + node.name);
-        if (open) state.expandedNodeIds.delete(String(node.id));
-        else state.expandedNodeIds.add(String(node.id));
-        saveExpansionState();
+        setFolderOpen(wrapper, !open);
       });
       row.append(toggle);
     } else {
@@ -315,12 +355,25 @@
     if (state.snapshot) renderCatalogue();
   });
   document.querySelector('#expand-all').addEventListener('click', () => tree.querySelectorAll('.tree-node-folder').forEach(node => {
-    node.dataset.open = 'true';
-    node.setAttribute('aria-expanded', 'true');
-    if (node.dataset.nodeId) state.expandedNodeIds.add(node.dataset.nodeId);
+    setFolderOpen(node, true, false);
   }));
   document.querySelector('#expand-all').addEventListener('click', saveExpansionState);
+  tree.addEventListener('contextmenu', event => {
+    const nodeElement = event.target.closest('.tree-node');
+    if (nodeElement) showTreeMenu(event, nodeElement);
+  });
+  treeMenuToggle.addEventListener('click', () => {
+    const folder = folderById(state.contextNodeId);
+    if (folder) setFolderOpen(folder, folder.dataset.open !== 'true');
+    hideTreeMenu();
+  });
+  document.querySelector('#tree-menu-collapse-level').addEventListener('click', () => { setFoldersAtDepth(state.contextDepth, false); hideTreeMenu(); });
+  document.querySelector('#tree-menu-expand-level').addEventListener('click', () => { setFoldersAtDepth(state.contextDepth, true); hideTreeMenu(); });
+  document.addEventListener('pointerdown', event => { if (!treeMenu.hidden && !treeMenu.contains(event.target)) hideTreeMenu(); });
+  window.addEventListener('resize', hideTreeMenu);
+  window.addEventListener('scroll', hideTreeMenu, true);
   document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !treeMenu.hidden) hideTreeMenu();
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
       search.focus();
