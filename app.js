@@ -160,7 +160,7 @@
     state.contextDepth = Number(nodeElement.dataset.depth);
     const isFolder = nodeElement.classList.contains('tree-node-folder');
     const node = snapshotNodeById(state.contextNodeId);
-    treeMenuRequest.hidden = !node || node.access.mode !== 'requestable';
+    treeMenuRequest.hidden = !node || isFolder || node.access.mode !== 'requestable';
     document.querySelector('#tree-menu-contribute').hidden = !isFolder;
     treeMenuToggle.hidden = !isFolder;
     if (isFolder) {
@@ -283,7 +283,7 @@
     icon.textContent = isFolder ? 'folder' : 'description';
     icon.setAttribute('aria-hidden', 'true');
     row.append(icon);
-    const requiresAccess = node.access.mode === 'requestable';
+    const requiresAccess = node.access.mode === 'requestable' && !isFolder;
     const needsConfiguration = node.access.mode === 'unconfigured';
     const isAction = !isFolder || requiresAccess || needsConfiguration;
     const label = document.createElement(isAction ? 'button' : 'span');
