@@ -9,6 +9,7 @@
     query: '',
     schoolChallengeId: '',
     loginChallengeId: '',
+    contributionTargetId: '',
     expandedNodeIds: new Set(),
     expansionStateKey: '',
     contextNodeId: '',
@@ -27,6 +28,10 @@
   const requestDialog = document.querySelector('#request-dialog');
   const requestSummary = document.querySelector('#request-summary');
   const requestDetail = document.querySelector('#request-detail');
+  const contributionDialog = document.querySelector('#contribution-dialog');
+  const contributionForm = document.querySelector('#contribution-form');
+  const contributionTarget = document.querySelector('#contribution-target');
+  const contributionMessage = document.querySelector('#contribution-message');
   const treeMenu = document.querySelector('#tree-menu');
   const treeMenuToggle = document.querySelector('#tree-menu-toggle');
   let toastTimer;
@@ -47,7 +52,8 @@
       completeLogin: ['complete_login', { challenge_id: args[0], code: args[1] }],
       signOut: ['sign_out', { session_token: args[0] || '' }],
       quoteCatalogueAccess: ['quote_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
-      requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1] }]
+      requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
+      submitCatalogueContribution: ['submit_catalogue_contribution', { session_token: args[0], target_drive_item_id: args[1], title: args[2], source_url: args[3], note: args[4] }]
     };
     const request = requests[name];
     if (!request) throw new Error('Unsupported SMR action.');
@@ -149,6 +155,7 @@
     state.contextNodeId = nodeElement.dataset.nodeId;
     state.contextDepth = Number(nodeElement.dataset.depth);
     const isFolder = nodeElement.classList.contains('tree-node-folder');
+    document.querySelector('#tree-menu-contribute').hidden = !isFolder;
     treeMenuToggle.hidden = !isFolder;
     if (isFolder) {
       const isOpen = nodeElement.dataset.open === 'true';
@@ -165,6 +172,39 @@
     if (state.member) document.querySelector('#signed-in-email').textContent = state.member.delivery_email;
     showForm('');
     dialog.showModal();
+  }
+  function catalogueFolderOptions() {
+    const nodes = (state.snapshot && state.snapshot.nodes) || [];
+    const byId = new Map(nodes.map(node => [String(node.id), node]));
+    const pathCache = new Map();
+    function pathFor(node) {
+      if (pathCache.has(String(node.id))) return pathCache.get(String(node.id));
+      const parent = byId.get(String(node.parent_id || ''));
+      const path = (parent ? pathFor(parent) + ' › ' : '') + node.name;
+      pathCache.set(String(node.id), path);
+      return path;
+    }
+    return nodes.filter(node => node.kind === 'folder').map(node => ({ id: String(node.id), path: pathFor(node) })).sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+  }
+  function openContribution(targetId) {
+    if (!state.member) {
+      openAccount();
+      setMessage('Sign in first, then contribute material.');
+      return;
+    }
+    const folders = catalogueFolderOptions();
+    if (!folders.length) return showToast('The catalogue is still loading. Try again in a moment.');
+    contributionTarget.replaceChildren();
+    folders.forEach(folder => {
+      const option = document.createElement('option');
+      option.value = folder.id;
+      option.textContent = folder.path;
+      contributionTarget.append(option);
+    });
+    contributionTarget.value = folders.some(folder => folder.id === String(targetId || '')) ? String(targetId) : folders[0].id;
+    state.contributionTargetId = contributionTarget.value;
+    contributionMessage.textContent = '';
+    contributionDialog.showModal();
   }
   function buildTree(nodes) {
     const byId = new Map(nodes.map(node => [String(node.id), { ...node, children: [] }]));
@@ -340,7 +380,8 @@
   document.querySelectorAll('.back-button').forEach(button => button.addEventListener('click', () => showForm('')));
   document.querySelector('#show-login').addEventListener('click', () => showForm('login-form'));
   document.querySelector('#show-signup').addEventListener('click', () => showForm('school-form'));
-  document.querySelector('#contribute-button').addEventListener('click', () => showToast('Contributions will be added to this same course tree next.'));
+  document.querySelector('#contribute-button').addEventListener('click', () => openContribution(''));
+  document.querySelector('#close-contribution-dialog').addEventListener('click', () => contributionDialog.close());
   document.querySelector('#sign-out').addEventListener('click', async () => {
     try { await callServer('signOut', state.token); } catch { /* Local sign-out still succeeds. */ }
     state.token = '';
@@ -367,6 +408,11 @@
     if (folder) setFolderOpen(folder, folder.dataset.open !== 'true');
     hideTreeMenu();
   });
+  document.querySelector('#tree-menu-contribute').addEventListener('click', () => {
+    const targetId = state.contextNodeId;
+    hideTreeMenu();
+    openContribution(targetId);
+  });
   document.querySelector('#tree-menu-collapse-level').addEventListener('click', () => { setFoldersAtDepth(state.contextDepth, false); hideTreeMenu(); });
   document.querySelector('#tree-menu-expand-level').addEventListener('click', () => { setFoldersAtDepth(state.contextDepth, true); hideTreeMenu(); });
   document.addEventListener('pointerdown', event => { if (!treeMenu.hidden && !treeMenu.contains(event.target)) hideTreeMenu(); });
@@ -377,6 +423,19 @@
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
       search.focus();
+    }
+  });
+
+  contributionForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    contributionMessage.textContent = 'Submitting for review…';
+    try {
+      const result = await callServer('submitCatalogueContribution', state.token, contributionTarget.value, document.querySelector('#contribution-title-input').value, document.querySelector('#contribution-url').value, document.querySelector('#contribution-note').value);
+      contributionDialog.close();
+      contributionForm.reset();
+      showToast(result.duplicate ? 'That contribution is already waiting for review.' : 'Submitted for community review.');
+    } catch (error) {
+      contributionMessage.textContent = error.message;
     }
   });
 
