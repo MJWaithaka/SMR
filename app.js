@@ -101,8 +101,14 @@
     requestDialog.classList.toggle('request-dialog-busy', Boolean(busy));
   }
   function confirmRequest(node) {
-    requestSummary.textContent = node.name + ' — ' + coins(Number(node.access.price_millis || 0) / 1000) + ' 🪙';
-    requestDetail.textContent = 'You will receive access to this file in Drive immediately.';
+    const checkingOwnedFile = Boolean(node.access.is_owned);
+    requestSummary.textContent = checkingOwnedFile
+      ? node.name + ' — check Drive access'
+      : node.name + ' — ' + coins(Number(node.access.price_millis || 0) / 1000) + ' 🪙';
+    requestDetail.textContent = checkingOwnedFile
+      ? 'We will verify your completed website purchase. No coins are spent for this check.'
+      : 'You will receive access to this file in Drive immediately.';
+    requestConfirm.textContent = checkingOwnedFile ? 'Check access' : 'Request access';
     setRequestProgress('', false);
     requestDialog.showModal();
     return new Promise(resolve => { resolvePendingRequest = resolve; });
@@ -177,7 +183,11 @@
     const isFolder = nodeElement.classList.contains('tree-node-folder');
     const node = snapshotNodeById(state.contextNodeId);
     treeMenuOpen.hidden = !node || isFolder || !node.web_url;
-    treeMenuRequest.hidden = !node || isFolder || node.access.mode !== 'requestable';
+    treeMenuRequest.hidden = !node || isFolder || (node.access.mode !== 'requestable' && !node.access.is_owned);
+    if (!treeMenuRequest.hidden) {
+      treeMenuRequest.querySelector('span:last-child').textContent = node.access.is_owned ? 'Check Drive access' : 'Request this file';
+      treeMenuRequest.querySelector('.material-symbols-outlined').textContent = node.access.is_owned ? 'verified_user' : 'add_shopping_cart';
+    }
     document.querySelector('#tree-menu-contribute').hidden = !isFolder;
     treeMenuToggle.hidden = !isFolder;
     document.querySelector('#tree-menu-collapse-level').hidden = !isFolder;
@@ -264,7 +274,8 @@
       setRequestProgress('', false);
       requestDialog.close();
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
-      else if (result.status === 'RESTORED') showToast('Your previous Drive access was restored. No coins were spent.');
+      else if (result.status === 'REPAIRED_COMPLETED_PURCHASE') showToast('Your completed purchase was delivered to Drive. No additional coins were spent.');
+      else if (result.status === 'RECORDED_BUT_NOT_ACCESSIBLE') showToast(result.error);
       else if (result.status === 'ALREADY_OWNED') showToast('You already have Drive access. No coins were spent.');
       else showToast(result.error || 'The request could not be completed; your held coins were released.');
       await loadCatalogue();
