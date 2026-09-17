@@ -53,6 +53,8 @@
       verifySchoolSignupCode: ['verify_school_signup_code', { challenge_id: args[0], code: args[1] }],
       requestLoginCode: ['request_login_code', { email: args[0] }],
       completeLogin: ['complete_login', { challenge_id: args[0], code: args[1] }],
+      passwordLogin: ['password_login', { school_email: args[0], password: args[1] }],
+      setPassword: ['set_password', { session_token: args[0], password: args[1] }],
       signOut: ['sign_out', { session_token: args[0] || '' }],
       quoteCatalogueAccess: ['quote_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
       requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
@@ -94,7 +96,7 @@
   function showForm(id) {
     forms.forEach(form => { form.hidden = form.id !== id; });
     document.querySelector('#account-home').hidden = Boolean(id) || Boolean(state.member);
-    document.querySelector('#signed-in-panel').hidden = !state.member;
+    document.querySelector('#signed-in-panel').hidden = !state.member || id === 'password-setup-form';
     setMessage('');
   }
   function updateAccount() {
@@ -237,6 +239,7 @@
       if (!(await confirmRequest(node))) return;
       const result = await callServer('requestCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
+      else if (result.status === 'ALREADY_OWNED') showToast('You already have Drive access. No coins were spent.');
       else showToast(result.error || 'The request could not be completed; your held coins were released.');
       await loadCatalogue();
     } catch (error) {
@@ -471,12 +474,25 @@
 
   document.querySelector('#login-form').addEventListener('submit', async event => {
     event.preventDefault();
+    setMessage('Signing you in…');
+    try {
+      const result = await callServer('passwordLogin', document.querySelector('#login-email').value, document.querySelector('#login-password').value);
+      state.token = result.session_token;
+      rememberMember(result.member);
+      localStorage.setItem('smr_session_token_v1', state.token);
+      updateAccount();
+      dialog.close();
+      showToast('Signed in.');
+      refreshMemberCatalogueState().catch(error => showToast(error.message));
+    } catch (error) { setMessage(error.message); }
+  });
+  document.querySelector('#use-login-code').addEventListener('click', async () => {
     setMessage('Sending your code…');
     try {
       const result = await callServer('requestLoginCode', document.querySelector('#login-email').value);
       state.loginChallengeId = result.challenge_id || '';
       showForm('login-code-form');
-      setMessage('If that address has an account, its code is on the way.');
+      setMessage('Your code is on the way.');
     } catch (error) { setMessage(error.message); }
   });
   document.querySelector('#login-code-form').addEventListener('submit', async event => {
@@ -488,9 +504,8 @@
       rememberMember(result.member);
       localStorage.setItem('smr_session_token_v1', state.token);
       updateAccount();
-      dialog.close();
-      showToast('Signed in.');
-      refreshMemberCatalogueState().catch(error => showToast(error.message));
+      showForm('password-setup-form');
+      setMessage('Create a password to finish signing in.');
     } catch (error) { setMessage(error.message); }
   });
   document.querySelector('#school-form').addEventListener('submit', async event => {
@@ -512,8 +527,22 @@
       rememberMember(result.member);
       localStorage.setItem('smr_session_token_v1', state.token);
       updateAccount();
+      showForm('password-setup-form');
+      setMessage('Create a password for future sign-ins.');
+    } catch (error) { setMessage(error.message); }
+  });
+  document.querySelector('#password-setup-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const password = document.querySelector('#password-setup').value;
+    if (password !== document.querySelector('#password-confirm').value) return setMessage('Those passwords do not match.');
+    setMessage('Saving password…');
+    try {
+      const result = await callServer('setPassword', state.token, password);
+      rememberMember(result.member || state.member);
+      updateAccount();
       dialog.close();
-      showToast('Your SMR account is ready.');
+      document.querySelector('#password-setup-form').reset();
+      showToast('Password saved. You can now sign in without a code.');
       refreshMemberCatalogueState().catch(error => showToast(error.message));
     } catch (error) { setMessage(error.message); }
   });
