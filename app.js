@@ -34,6 +34,7 @@
   const contributionMessage = document.querySelector('#contribution-message');
   const treeMenu = document.querySelector('#tree-menu');
   const treeMenuToggle = document.querySelector('#tree-menu-toggle');
+  const treeMenuRequest = document.querySelector('#tree-menu-request');
   let toastTimer;
   let resolvePendingRequest = null;
 
@@ -130,6 +131,9 @@
   function folderById(id) {
     return [...tree.querySelectorAll('.tree-node-folder')].find(element => element.dataset.nodeId === String(id));
   }
+  function snapshotNodeById(id) {
+    return ((state.snapshot && state.snapshot.nodes) || []).find(node => String(node.id) === String(id)) || null;
+  }
   function setFolderOpen(folder, open, save) {
     if (!folder) return;
     folder.dataset.open = String(open);
@@ -155,6 +159,8 @@
     state.contextNodeId = nodeElement.dataset.nodeId;
     state.contextDepth = Number(nodeElement.dataset.depth);
     const isFolder = nodeElement.classList.contains('tree-node-folder');
+    const node = snapshotNodeById(state.contextNodeId);
+    treeMenuRequest.hidden = !node || node.access.mode !== 'requestable';
     document.querySelector('#tree-menu-contribute').hidden = !isFolder;
     treeMenuToggle.hidden = !isFolder;
     if (isFolder) {
@@ -400,8 +406,14 @@
   }));
   document.querySelector('#expand-all').addEventListener('click', saveExpansionState);
   tree.addEventListener('contextmenu', event => {
-    const nodeElement = event.target.closest('.tree-node');
+    const row = event.target.closest('.tree-row');
+    const nodeElement = row && row.parentElement;
     if (nodeElement) showTreeMenu(event, nodeElement);
+  });
+  treeMenuRequest.addEventListener('click', () => {
+    const node = snapshotNodeById(state.contextNodeId);
+    hideTreeMenu();
+    if (node) requestAccess(node);
   });
   treeMenuToggle.addEventListener('click', () => {
     const folder = folderById(state.contextNodeId);
