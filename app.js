@@ -264,6 +264,7 @@
       setRequestProgress('', false);
       requestDialog.close();
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
+      else if (result.status === 'RESTORED') showToast('Your previous Drive access was restored. No coins were spent.');
       else if (result.status === 'ALREADY_OWNED') showToast('You already have Drive access. No coins were spent.');
       else showToast(result.error || 'The request could not be completed; your held coins were released.');
       await loadCatalogue();
