@@ -7,7 +7,9 @@
     snapshot: null,
     query: '',
     schoolChallengeId: '',
-    loginChallengeId: ''
+    loginChallengeId: '',
+    expandedNodeIds: new Set(),
+    expansionStateKey: ''
   };
   const tree = document.querySelector('#catalogue-tree');
   const search = document.querySelector('#catalogue-search');
@@ -35,6 +37,7 @@
       requestLoginCode: ['request_login_code', { email: args[0] }],
       completeLogin: ['complete_login', { challenge_id: args[0], code: args[1] }],
       signOut: ['sign_out', { session_token: args[0] || '' }],
+      quoteCatalogueAccess: ['quote_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
       requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1] }]
     };
     const request = requests[name];
@@ -69,6 +72,24 @@
     accountBalance.hidden = !signedIn;
     if (signedIn) accountBalance.textContent = coins(state.member.balance_coins) + ' 🪙';
   }
+  function getExpansionStateKey() {
+    return 'smr_catalogue_expansion_v1:' + (state.member && state.member.member_id ? state.member.member_id : 'guest');
+  }
+  function loadExpansionState() {
+    const key = getExpansionStateKey();
+    if (state.expansionStateKey === key) return;
+    state.expansionStateKey = key;
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || '[]');
+      state.expandedNodeIds = new Set(Array.isArray(saved) ? saved.map(String) : []);
+    } catch {
+      state.expandedNodeIds = new Set();
+      localStorage.removeItem(key);
+    }
+  }
+  function saveExpansionState() {
+    localStorage.setItem(state.expansionStateKey || getExpansionStateKey(), JSON.stringify([...state.expandedNodeIds]));
+  }
   function openAccount() {
     if (state.member) document.querySelector('#signed-in-email').textContent = state.member.delivery_email;
     showForm('');
@@ -97,12 +118,13 @@
       setMessage('Sign in first, then request this item.');
       return;
     }
-    const price = coins(node.access.price_millis / 1000);
-    const label = node.access.purchase_label || node.name;
-    const isFolder = node.access.purchase_drive_item_id && node.access.purchase_drive_item_id !== node.id;
-    const itemWord = isFolder || node.kind === 'folder' ? 'folder and everything inside it' : 'file';
-    if (!window.confirm('Request ' + label + ' for ' + price + ' 🪙? You will receive the ' + itemWord + ' in Drive.')) return;
     try {
+      const quote = await callServer('quoteCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
+      if (quote.already_owned) return showToast('You already own every currently priced item here.');
+      const itemWord = quote.item_kind === 'folder'
+        ? quote.unowned_item_count + ' unowned file' + (quote.unowned_item_count === 1 ? '' : 's')
+        : 'this file';
+      if (!window.confirm('Request ' + quote.label + ' for ' + coins(quote.total_price_coins) + ' 🪙? This covers ' + itemWord + '.')) return;
       const result = await callServer('requestCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
       else showToast(result.error || 'The request could not be completed; your held coins were released.');
@@ -116,23 +138,28 @@
     const isFolder = node.kind === 'folder';
     const wrapper = document.createElement('div');
     wrapper.className = 'tree-node tree-node-' + (isFolder ? 'folder' : 'file');
+    wrapper.dataset.nodeId = String(node.id);
     wrapper.style.setProperty('--depth', depth);
-    wrapper.dataset.open = 'true';
+    const shouldOpen = Boolean(state.query) || depth === 0 || state.expandedNodeIds.has(String(node.id));
+    wrapper.dataset.open = String(shouldOpen);
     wrapper.setAttribute('role', 'treeitem');
-    if (isFolder) wrapper.setAttribute('aria-expanded', 'true');
+    if (isFolder) wrapper.setAttribute('aria-expanded', String(shouldOpen));
     const row = document.createElement('div');
     row.className = 'tree-row';
     if (isFolder) {
       const toggle = document.createElement('button');
       toggle.className = 'tree-toggle';
       toggle.type = 'button';
-      toggle.setAttribute('aria-label', 'Collapse ' + node.name);
+      toggle.setAttribute('aria-label', (shouldOpen ? 'Collapse ' : 'Expand ') + node.name);
       toggle.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">expand_more</span>';
       toggle.addEventListener('click', () => {
         const open = wrapper.dataset.open === 'true';
         wrapper.dataset.open = String(!open);
         wrapper.setAttribute('aria-expanded', String(!open));
         toggle.setAttribute('aria-label', (open ? 'Expand ' : 'Collapse ') + node.name);
+        if (open) state.expandedNodeIds.delete(String(node.id));
+        else state.expandedNodeIds.add(String(node.id));
+        saveExpansionState();
       });
       row.append(toggle);
     } else {
@@ -188,6 +215,7 @@
     return wrapper;
   }
   function renderCatalogue() {
+    loadExpansionState();
     tree.replaceChildren();
     const roots = buildTree(state.snapshot.nodes || []);
     let count = 0;
@@ -225,6 +253,7 @@
         state.token = '';
         localStorage.removeItem('smr_session_token_v1');
       }
+      loadExpansionState();
       savePublicCatalogue(state.snapshot);
       updateAccount();
       renderCatalogue();
@@ -258,7 +287,9 @@
   document.querySelector('#expand-all').addEventListener('click', () => tree.querySelectorAll('.tree-node-folder').forEach(node => {
     node.dataset.open = 'true';
     node.setAttribute('aria-expanded', 'true');
+    if (node.dataset.nodeId) state.expandedNodeIds.add(node.dataset.nodeId);
   }));
+  document.querySelector('#expand-all').addEventListener('click', saveExpansionState);
   document.addEventListener('keydown', event => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
