@@ -28,6 +28,10 @@
   const requestDialog = document.querySelector('#request-dialog');
   const requestSummary = document.querySelector('#request-summary');
   const requestDetail = document.querySelector('#request-detail');
+  const requestProgress = document.querySelector('#request-progress');
+  const requestProgressMessage = document.querySelector('#request-progress-message');
+  const requestCancel = document.querySelector('#cancel-request');
+  const requestConfirm = document.querySelector('#confirm-request');
   const contributionDialog = document.querySelector('#contribution-dialog');
   const contributionForm = document.querySelector('#contribution-form');
   const contributionTargetPath = document.querySelector('#contribution-target-path');
@@ -38,6 +42,7 @@
   const treeMenuOpen = document.querySelector('#tree-menu-open');
   let toastTimer;
   let resolvePendingRequest = null;
+  let requestInFlight = false;
 
   function apiUrl() {
     const configured = String(window.SMR_API_BASE_URL || '').replace(/\/+$/, '');
@@ -80,15 +85,25 @@
     toastTimer = setTimeout(() => { toast.hidden = true; }, 5000);
   }
   function closeRequestDialog(confirmed) {
+    if (requestInFlight) return;
     if (!resolvePendingRequest) return;
     const resolve = resolvePendingRequest;
     resolvePendingRequest = null;
-    requestDialog.close();
+    if (!confirmed) requestDialog.close();
     resolve(confirmed);
+  }
+  function setRequestProgress(message, busy) {
+    requestProgress.hidden = !busy;
+    requestProgressMessage.textContent = message || '';
+    requestCancel.disabled = Boolean(busy);
+    requestConfirm.disabled = Boolean(busy);
+    document.querySelector('#close-request-dialog').disabled = Boolean(busy);
+    requestDialog.classList.toggle('request-dialog-busy', Boolean(busy));
   }
   function confirmRequest(node) {
     requestSummary.textContent = node.name + ' — ' + coins(Number(node.access.price_millis || 0) / 1000) + ' 🪙';
     requestDetail.textContent = 'You will receive access to this file in Drive immediately.';
+    setRequestProgress('', false);
     requestDialog.showModal();
     return new Promise(resolve => { resolvePendingRequest = resolve; });
   }
@@ -237,12 +252,25 @@
     }
     try {
       if (!(await confirmRequest(node))) return;
+      requestInFlight = true;
+      setRequestProgress('Checking whether you already have access…', true);
+      const progressTimers = [
+        setTimeout(() => setRequestProgress('Confirming your balance and request…', true), 900),
+        setTimeout(() => setRequestProgress('Finishing with Google Drive…', true), 2800)
+      ];
       const result = await callServer('requestCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
+      progressTimers.forEach(clearTimeout);
+      requestInFlight = false;
+      setRequestProgress('', false);
+      requestDialog.close();
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
       else if (result.status === 'ALREADY_OWNED') showToast('You already have Drive access. No coins were spent.');
       else showToast(result.error || 'The request could not be completed; your held coins were released.');
       await loadCatalogue();
     } catch (error) {
+      requestInFlight = false;
+      setRequestProgress('', false);
+      if (requestDialog.open) requestDialog.close();
       showToast(error.message);
     }
   }
