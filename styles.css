@@ -272,6 +272,12 @@ h2 { font-size: 21px; letter-spacing: -.2px; line-height: 1.3; }
 .request-actions .tonal-button { width: auto; }
 .dialog-copy, .form-help { color: var(--md-sys-color-on-surface-variant); font-size: 14px; }
 .dialog-actions, .auth-form { display: flex; flex-direction: column; gap: 12px; }
+.community-dialog { width: min(640px, calc(100% - 32px)); }
+.community-task { padding: 16px; margin: 16px 0; background: var(--md-sys-color-surface-container-low); border-radius: var(--md-sys-shape-corner-medium); overflow-wrap: anywhere; }
+.community-task h3 { margin: 0; font-size: 16px; }
+.task-form, .task-form label { display: flex; flex-direction: column; gap: 8px; }
+.task-form { gap: 16px; }
+.task-form input, .task-form textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 12px; color: var(--md-sys-color-on-surface); background: var(--md-sys-color-surface-container-low); border: 0; border-radius: var(--md-sys-shape-corner-small); }
 [hidden] { display: none !important; }
 .auth-form[hidden], #signed-in-panel[hidden], #account-home[hidden] { display: none; }
 .auth-form label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; }

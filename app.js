@@ -62,7 +62,10 @@
       setPassword: ['set_password', { session_token: args[0], password: args[1] }],
       signOut: ['sign_out', { session_token: args[0] || '' }],
       quoteCatalogueAccess: ['quote_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
-      requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1], check_only: args[2] === true }],
+      requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1], check_only: args[2] === true, check_token: args[3] || '' }],
+      communityTasks: ['community_tasks', {session_token: state.token}],
+      proposeCommunityTask: ['propose_community_task', {session_token: state.token, target_drive_item_id: args[0], title: args[1], note: args[2]}],
+      voteCommunityTask: ['vote_community_task', {session_token: state.token, task_id: args[0], support: args[1]}],
       submitCatalogueContribution: ['submit_catalogue_contribution', { session_token: args[0], target_drive_item_id: args[1], title: args[2], source_url: args[3], note: args[4] }]
     };
     const request = requests[name];
@@ -189,6 +192,7 @@
       treeMenuRequest.querySelector('.material-symbols-outlined').textContent = node.access.is_owned ? 'verified_user' : 'add_shopping_cart';
     }
     document.querySelector('#tree-menu-contribute').hidden = !isFolder;
+    document.querySelector('#tree-menu-task').hidden = !isFolder;
     treeMenuToggle.hidden = !isFolder;
     document.querySelector('#tree-menu-collapse-level').hidden = !isFolder;
     document.querySelector('#tree-menu-expand-level').hidden = !isFolder;
@@ -267,12 +271,14 @@
         requestDialog.showModal();
       } else if (!(await confirmRequest(node))) return;
       requestInFlight = true;
-      setRequestProgress('Checking whether you already have access…', true);
-      const result = await callServer('requestCatalogueAccess', state.token, node.id, checkOnly);
+      setRequestProgress(node.checkToken && !checkOnly ? 'Processing your request…' : 'Checking whether you already have access…', true);
+      const result = await callServer('requestCatalogueAccess', state.token, node.id, checkOnly, node.checkToken);
+      delete node.checkToken;
       requestInFlight = false;
       setRequestProgress('', false);
       requestDialog.close();
       if (result.status === 'ACCESS_REQUIRED') {
+        node.checkToken = result.check_token;
         node.access = { ...node.access, mode: 'requestable', is_owned: false, price_millis: result.price_coins * 1000, purchase_drive_item_id: node.id };
         renderCatalogue();
         // Only spending coins needs confirmation. The initial check is immediate.
@@ -590,6 +596,61 @@
       showToast('Password saved. You can now sign in without a code.');
       refreshMemberCatalogueState().catch(error => showToast(error.message));
     } catch (error) { setMessage(error.message); }
+  });
+
+  const communityDialog = document.querySelector('#community-dialog');
+  const taskDialog = document.querySelector('#task-dialog');
+  let taskTargetId = '';
+  async function loadCommunityTasks() {
+    const status = document.querySelector('#community-status');
+    const list = document.querySelector('#community-list');
+    status.textContent = 'Loading tasks…'; list.replaceChildren();
+    try {
+      const result = await callServer('communityTasks');
+      status.textContent = result.tasks.length ? '' : 'No proposals yet. Start one from a catalogue folder.';
+      for (const task of result.tasks) {
+        const card = document.createElement('article'); card.className = 'community-task';
+        const title = document.createElement('h3'); title.textContent = task.title;
+        const path = document.createElement('p'); path.className = 'dialog-copy'; path.textContent = task.target_path;
+        const note = document.createElement('p'); note.textContent = task.note;
+        const vote = document.createElement('button'); vote.type = 'button'; vote.className = 'tonal-button';
+        vote.textContent = (task.supported ? 'Supported' : 'Support') + ' · ' + task.votes;
+        vote.setAttribute('aria-pressed', String(task.supported));
+        vote.addEventListener('click', async () => {
+          vote.disabled = true;
+          try { await callServer('voteCommunityTask', task.id, !task.supported); await loadCommunityTasks(); }
+          catch (error) { status.textContent = error.message; vote.disabled = false; }
+        });
+        card.append(title, path, note, vote); list.append(card);
+      }
+    } catch (error) { status.textContent = error.message; }
+  }
+  document.querySelector('#community-button').addEventListener('click', () => {
+    if (!state.member) return openAccount();
+    communityDialog.showModal(); loadCommunityTasks();
+  });
+  document.querySelector('#close-community').addEventListener('click', () => communityDialog.close());
+  document.querySelector('#close-task').addEventListener('click', () => taskDialog.close());
+  document.querySelector('#tree-menu-task').addEventListener('click', () => {
+    const node = snapshotNodeById(state.contextNodeId); hideTreeMenu();
+    if (!state.member) return openAccount();
+    if (!node || node.kind !== 'folder') return;
+    taskTargetId = node.id;
+    document.querySelector('#task-form').reset();
+    document.querySelector('#task-status').textContent = '';
+    document.querySelector('#task-destination').textContent = cataloguePathFor(node);
+    taskDialog.showModal();
+  });
+  document.querySelector('#task-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.target.querySelector('button[type=submit]');
+    const status = document.querySelector('#task-status');
+    button.disabled = true; status.textContent = 'Saving proposal…';
+    try {
+      await callServer('proposeCommunityTask', taskTargetId, document.querySelector('#task-name').value, document.querySelector('#task-note').value);
+      taskDialog.close(); communityDialog.showModal(); await loadCommunityTasks();
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
   });
 
   loadCachedCatalogue();

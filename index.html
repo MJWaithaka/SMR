@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:opsz,wght@17..18,400;17..18,500;17..18,700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260918-target-access" />
+    <link rel="stylesheet" href="./styles.css?v=20260918-community" />
   </head>
   <body>
     <main class="app-shell">
@@ -26,7 +26,22 @@
         </section>
       </section>
       <section class="contribute-card" id="contribute"><div><p class="eyebrow">Help the collective</p><h2>Have something useful?</h2><p>Submit it in the course section where it belongs. The community will review it before it appears here.</p></div><button class="tonal-button" id="contribute-button" type="button"><span class="material-symbols-outlined" aria-hidden="true">add_circle</span>Contribute material</button></section>
+      <button class="text-button" id="community-button" type="button">Community tasks</button>
     </main>
+    <dialog id="community-dialog" class="account-dialog community-dialog" aria-labelledby="community-title">
+      <div class="dialog-header"><h2 id="community-title">Community tasks</h2><button id="close-community" class="icon-button" type="button" aria-label="Close community tasks">×</button></div>
+      <p class="dialog-copy">Vote for missing materials. To propose a task, right-click its destination folder and choose “Request missing material”.</p>
+      <p id="community-status" role="status" aria-live="polite"></p><div id="community-list"></div>
+    </dialog>
+    <dialog id="task-dialog" class="account-dialog" aria-labelledby="task-title">
+      <div class="dialog-header"><h2 id="task-title">Request missing material</h2><button id="close-task" class="icon-button" type="button" aria-label="Close task proposal">×</button></div>
+      <p id="task-destination" class="dialog-copy"></p>
+      <form id="task-form" class="task-form">
+        <label>What is missing?<input id="task-name" minlength="5" maxlength="180" required placeholder="e.g. Compiler Construction 2026 exam" /></label>
+        <label>Details (optional)<textarea id="task-note" maxlength="1000" rows="3"></textarea></label>
+        <button class="tonal-button" type="submit">Propose task</button>
+      </form><p id="task-status" role="status" aria-live="polite"></p>
+    </dialog>
     <dialog id="account-dialog" class="account-dialog" aria-labelledby="dialog-title">
       <div class="dialog-header"><h2 id="dialog-title">Your SMR account</h2><button class="icon-button" id="close-dialog" type="button" aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
       <div id="account-home" class="dialog-actions"><button class="tonal-button" id="show-login" type="button">Sign in</button><button class="text-button" id="show-signup" type="button">Create account</button></div>
@@ -61,12 +76,13 @@
       <button id="tree-menu-open" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">open_in_new</span><span>Open file</span></button>
       <button id="tree-menu-request" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">add_shopping_cart</span><span>Request this file</span></button>
       <button id="tree-menu-contribute" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">add_circle</span><span>Contribute here</span></button>
+      <button id="tree-menu-task" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">assignment</span>Request missing material</button>
       <button id="tree-menu-toggle" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">expand_less</span><span>Collapse this folder</span></button>
       <button id="tree-menu-collapse-level" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">unfold_less</span><span>Collapse folders at this level</span></button>
       <button id="tree-menu-expand-level" type="button" role="menuitem"><span class="material-symbols-outlined" aria-hidden="true">unfold_more</span><span>Expand folders at this level</span></button>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./config.js?v=20260918-target-access"></script>
-    <script src="./app.js?v=20260918-target-access"></script>
+    <script src="./config.js?v=20260918-community"></script>
+    <script src="./app.js?v=20260918-community"></script>
   </body>
 </html>
