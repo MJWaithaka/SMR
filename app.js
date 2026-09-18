@@ -62,7 +62,7 @@
       setPassword: ['set_password', { session_token: args[0], password: args[1] }],
       signOut: ['sign_out', { session_token: args[0] || '' }],
       quoteCatalogueAccess: ['quote_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
-      requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1] }],
+      requestCatalogueAccess: ['request_catalogue_access', { session_token: args[0], drive_item_id: args[1], check_only: args[2] === true }],
       submitCatalogueContribution: ['submit_catalogue_contribution', { session_token: args[0], target_drive_item_id: args[1], title: args[2], source_url: args[3], note: args[4] }]
     };
     const request = requests[name];
@@ -183,9 +183,9 @@
     const isFolder = nodeElement.classList.contains('tree-node-folder');
     const node = snapshotNodeById(state.contextNodeId);
     treeMenuOpen.hidden = !node || isFolder || !node.web_url;
-    treeMenuRequest.hidden = !node || isFolder || (node.access.mode !== 'requestable' && !node.access.is_owned);
+    treeMenuRequest.hidden = !node || isFolder;
     if (!treeMenuRequest.hidden) {
-      treeMenuRequest.querySelector('span:last-child').textContent = node.access.is_owned ? 'Check Drive access' : 'Request this file';
+      treeMenuRequest.querySelector('span:last-child').textContent = node.access.mode === 'requestable' ? 'Request this file' : 'Check Drive access';
       treeMenuRequest.querySelector('.material-symbols-outlined').textContent = node.access.is_owned ? 'verified_user' : 'add_shopping_cart';
     }
     document.querySelector('#tree-menu-contribute').hidden = !isFolder;
@@ -254,25 +254,30 @@
     const ownText = [node.name, ...(node.announcements || []).map(item => item.message)].join(' ').toLowerCase();
     return !state.query || ownText.includes(state.query) || node.children.some(matches);
   }
-  async function requestAccess(node) {
+  async function requestAccess(node, checkOnly = false) {
     if (!state.member) {
       openAccount();
       setMessage('Sign in first, then request this item.');
       return;
     }
     try {
-      if (!(await confirmRequest(node))) return;
+      if (checkOnly) {
+        requestSummary.textContent = node.name;
+        requestDetail.textContent = 'Checking the file’s current Drive permissions…';
+        requestDialog.showModal();
+      } else if (!(await confirmRequest(node))) return;
       requestInFlight = true;
       setRequestProgress('Checking whether you already have access…', true);
-      const progressTimers = [
-        setTimeout(() => setRequestProgress('Confirming your balance and request…', true), 900),
-        setTimeout(() => setRequestProgress('Finishing with Google Drive…', true), 2800)
-      ];
-      const result = await callServer('requestCatalogueAccess', state.token, node.access.purchase_drive_item_id || node.id);
-      progressTimers.forEach(clearTimeout);
+      const result = await callServer('requestCatalogueAccess', state.token, node.id, checkOnly);
       requestInFlight = false;
       setRequestProgress('', false);
       requestDialog.close();
+      if (result.status === 'ACCESS_REQUIRED') {
+        node.access = { ...node.access, mode: 'requestable', is_owned: false, price_millis: result.price_coins * 1000, purchase_drive_item_id: node.id };
+        renderCatalogue();
+        // Only spending coins needs confirmation. The initial check is immediate.
+        return requestAccess(node);
+      }
       if (result.status === 'COMPLETED') showToast('Access granted. It is now available in Drive.');
       else if (result.status === 'REPAIRED_COMPLETED_PURCHASE') showToast('Your completed purchase was delivered to Drive. No additional coins were spent.');
       else if (result.status === 'RECORDED_BUT_NOT_ACCESSIBLE') showToast(result.error);
@@ -469,7 +474,7 @@
   treeMenuRequest.addEventListener('click', () => {
     const node = snapshotNodeById(state.contextNodeId);
     hideTreeMenu();
-    if (node) requestAccess(node);
+    if (node) requestAccess(node, node.access.mode !== 'requestable');
   });
   treeMenuOpen.addEventListener('click', () => {
     const node = snapshotNodeById(state.contextNodeId);
